@@ -1,8 +1,6 @@
 """
 依赖包管理插件 - 允许管理员通过微信命令安装Python依赖包和Github插件
 
-作者: Claude
-版本: 1.0.0
 """
 import os
 import sys
