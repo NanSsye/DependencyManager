@@ -1,6 +1,8 @@
 """
 依赖包管理插件 - 允许管理员通过微信命令安装Python依赖包和Github插件
 
+作者: 老夏的金库
+版本: 1.0.0
 """
 import os
 import sys
@@ -111,15 +113,7 @@ class DependencyManager(PluginBase):
         # 记录所有消息，用于调试
         logger.info(f"[DependencyManager] 收到消息: '{content}'")
 
-        # 检查是否包含GitHub关键词 - 提前检查以避免后续处理遗漏
-        if self.github_install_prefix.lower() in content.lower():
-            logger.info(f"[DependencyManager] 消息中包含GitHub关键词: {self.github_install_prefix}")
-            
-            # 额外检查是否为管理员 - 仅针对可能的GitHub命令
-            if from_user in self.admin_list:
-                logger.info(f"[DependencyManager] 管理员 {from_user} 发送可能的GitHub命令")
-        
-        # 确定消息发送者ID
+        # 检查是否为管理员
         sender_id = from_user
         if not sender_id and "IsGroup" in message and message["IsGroup"]:
             # 如果是群聊消息，则SenderWxid应该已经包含发送者ID
@@ -149,24 +143,21 @@ class DependencyManager(PluginBase):
         
         # 2. GitHub相关命令处理 - 优先级最高
         
-        # 2.1 GitHub快捷命令 - GeminiImage特殊处理
-        if content.strip().lower() == "github gemini" or content.strip().lower() == "github geminiimage":
+        # 2.1 检查是否明确以GitHub前缀开头 - 要求明确的安装意图
+        starts_with_prefix = content.lower().startswith(self.github_install_prefix.lower())
+        logger.critical(f"[DependencyManager] 检查是否以'{self.github_install_prefix}'开头: {starts_with_prefix}, 内容: '{content}'")
+        
+        # 2.2 GitHub快捷命令 - GeminiImage特殊处理
+        if starts_with_prefix and (content.strip().lower() == f"{self.github_install_prefix} gemini" or 
+                                  content.strip().lower() == f"{self.github_install_prefix} geminiimage"):
             logger.info("[DependencyManager] 检测到GeminiImage快捷安装命令")
             await bot.send_text_message(conversation_id, "🔄 正在安装GeminiImage插件...")
             await self._handle_github_install(bot, conversation_id, "https://github.com/NanSsye/GeminiImage.git")
             logger.info("[DependencyManager] GeminiImage快捷安装完成，阻止后续插件处理")
             return False
-        
-        # 2.2 特殊处理GeminiImage的URL - 检测到就直接安装
-        if "github.com/NanSsye/GeminiImage" in content:
-            logger.info("[DependencyManager] 检测到GeminiImage URL")
-            await bot.send_text_message(conversation_id, "🔄 检测到GeminiImage插件链接，正在安装...")
-            await self._handle_github_install(bot, conversation_id, "https://github.com/NanSsye/GeminiImage.git")
-            logger.info("[DependencyManager] GeminiImage URL安装完成，阻止后续插件处理")
-            return False
             
         # 2.3 GitHub帮助命令
-        if content.strip().lower() == "github help":
+        if content.strip().lower() == f"{self.github_install_prefix} help":
             help_text = f"""📦 GitHub插件安装帮助:
 
 1. 安装GitHub上的插件:
@@ -189,10 +180,7 @@ class DependencyManager(PluginBase):
             logger.info("[DependencyManager] GitHub安装帮助命令响应成功")
             return False
             
-        # 2.4 标准GitHub安装命令处理
-        starts_with_prefix = content.lower().startswith(self.github_install_prefix.lower())
-        logger.critical(f"[DependencyManager] 检查是否以'{self.github_install_prefix}'开头: {starts_with_prefix}, 内容: '{content}'")
-        
+        # 2.4 标准GitHub安装命令处理 - 必须以明确的前缀开头
         if starts_with_prefix:
             logger.critical(f"[DependencyManager] 检测到GitHub安装命令: {content}")
             # 获取前缀后面的内容
@@ -235,25 +223,9 @@ class DependencyManager(PluginBase):
             logger.info("[DependencyManager] 命令以github开头但未匹配任何处理逻辑，默认阻止后续处理")
             return False
         
-        # 2.5 智能识别GitHub URL
-        # 尝试从消息中提取GitHub URL进行额外处理 - 仅当消息不以任何已知命令前缀开头时
-        if not content.startswith("!") and not starts_with_prefix:
-            github_url_match = re.search(r'https?://github\.com/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+(?:\.git)?', content)
-            if github_url_match:
-                github_url = github_url_match.group(0)
-                logger.info(f"[DependencyManager] 从消息中提取到GitHub URL: {github_url}")
-                
-                # 只处理明确的安装意图
-                if "安装" in content or "clone" in content.lower() or "下载" in content:
-                    logger.info(f"[DependencyManager] 检测到安装意图，处理GitHub URL: {github_url}")
-                    await bot.send_text_message(conversation_id, f"检测到安装请求，尝试安装GitHub插件: {github_url}")
-                    await self._handle_github_install(bot, conversation_id, github_url)
-                    logger.info("[DependencyManager] 从消息提取的GitHub URL安装完成，阻止后续处理")
-                    return False
-                else:
-                    logger.info("[DependencyManager] 检测到GitHub URL但无明确安装意图，允许后续处理")
+        # 忽略智能识别GitHub URL的逻辑，必须以明确的前缀开始才处理
         
-        # 3. pip相关命令处理
+        # 3. 依赖管理命令
         
         # 3.1 处理安装命令
         if content.startswith(self.install_cmd):
